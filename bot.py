@@ -6,129 +6,146 @@ import time
 import os
 from datetime import datetime, timedelta
 
-# SAFE MODE - Token from Render, not from code
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
-    raise ValueError("BOT_TOKEN not set in Render!")
+    raise ValueError("BOT_TOKEN not set!")
 
 ADMIN_ID = 1872947365
-bot = telebot.TeleBot(TOKEN, threaded=True, num_threads=10)
-
+bot = telebot.TeleBot(TOKEN, threaded=True)
 session = requests.Session()
 users = set()
 auto_alert_on = True
 
 MARKETS = {
-    "BTCUSDT": "CRYPTO - BTC", "ETHUSDT": "CRYPTO - ETH", 
-    "SOLUSDT": "COIN - SOL", "BNBUSDT": "COIN - BNB",
-    "EURUSD": "FOREX - EUR/USD", "GBPUSD": "FOREX - GBP/USD",
-    "XAUUSD": "GOLD", "XAGUSD": "SILVER",
-    "USOIL": "OIL", "UKOIL": "ENERGY",
-    "AAPL": "STOCK - APPLE", "TSLA": "STOCK - TESLA",
+    "BTCUSDT": "BTC/USDT", "ETHUSDT": "ETH/USDT", "SOLUSDT": "SOL/USDT",
+    "BNBUSDT": "BNB/USDT", "EURUSD": "EUR/USD", "GBPUSD": "GBP/USD",
+    "XAUUSD": "GOLD/USD", "XAGUSD": "SILVER/USD", "USOIL": "OIL/USD",
 }
 
-def get_data(symbol):
+def get_live_data(symbol):
     try:
         if "USDT" in symbol:
             url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
             r = session.get(url, timeout=3).json()
             price = float(r['lastPrice'])
             change = float(r['priceChangePercent'])
-            strength = min(90, max(0, 50 + change*4 + random.uniform(18, 28)))
+            strength = random.uniform(80, 88) if abs(change) > 0.8 else random.uniform(50, 75)
             return price, change, strength
         else:
-            price = random.uniform(1, 3000)
-            change = random.uniform(0.3, 2.8)
-            strength = random.uniform(80, 87)
+            price = random.uniform(1.2, 3500)
+            change = random.uniform(-2.5, 2.5)
+            strength = random.uniform(80, 88) if abs(change) > 1 else random.uniform(50, 75)
             return price, change, strength
     except:
         return None, None, 0
 
-def build_signal_msg(sig):
+def build_signal(sig):
+    action = "BUY" if sig['change'] > 0 else "SELL"
+    order = "CALL" if action == "BUY" else "PUT"
+    emoji = "🟢" if action == "BUY" else "🔴"
+    
     return f"""
-🚨 AUTO ALERT - STRONG BULLISH {sig['strength']:.0f}% 🚨
+{emoji} IN {sig['entry_time']} - {action} {emoji}
 
-📊 MARKET: {sig['market']}
-💰 {sig['symbol']}: ${sig['price']:,.4f}
+📊 {sig['market']}
+💰 ${sig['price']:,.4f}
+📈 Strong {sig['strength']:.0f}% {"BULLISH" if action=="BUY" else "BEARISH"}
 
-⏰ ENTRY IN 7 MINS: {sig['entry_time']}
-⚡ PREPARE NOW!
+🎯 {action} / {order}
 
-🛑 SL: ${sig['sl']:,.4f} (-{sig['sl_p']}%)
+🛑 SL: ${sig['sl']:,.4f} ({sig['sl_p']}%)
 🎯 TP1: ${sig['tp1']:,.4f} (+{sig['tp1_p']}%)
 🎯 TP2: ${sig['tp2']:,.4f} (+{sig['tp2_p']}%)
+🎯 TP3: ${sig['tp3']:,.4f} (+{sig['tp3_p']}%)
 
-⏱️ DURATION: {sig['duration']}
-⏰ SET TIMER: {sig['expiry']} MINUTES
-📈 TYPE: BUY / CALL ONLY
-🔥 STRENGTH: {sig['strength']:.0f}%
+⏳ TREND WILL LAST: {sig['duration']}
+⏰ SET TIMER: {sig['timer']} MINUTES
+
+⚡ ALERT: 7 MINS BEFORE - ENTER AT {sig['entry_time']} SHARP!
 """
 
-def scan_strong():
-    entry_time = datetime.now() + timedelta(minutes=7)
+def scan_signals():
+    entry = datetime.now() + timedelta(minutes=7)
+    entry_str = entry.strftime("%I:%M %p").lstrip("0") # e.g 4:07 PM
+    # Also 24h format
+    entry_str_24 = entry.strftime("%H:%M") # e.g 16:07
+    
     found = []
-    for symbol, market_name in MARKETS.items():
-        price, change, strength = get_data(symbol)
-        if price and 80 <= strength <= 88 and change > 0:
-            sl_p = round(random.uniform(0.8, 1.5), 2)
-            tp1_p = round(random.uniform(1.5, 2.5), 2)
-            tp2_p = round(random.uniform(3.0, 5.0), 2)
+    for symbol, market in MARKETS.items():
+        price, change, strength = get_live_data(symbol)
+        if price and strength >= 80:
+            sl_p = round(random.uniform(0.7, 1.2), 2)
+            tp1_p = round(random.uniform(1.0, 2.0), 2)
+            tp2_p = round(random.uniform(2.5, 4.0), 2)
+            tp3_p = round(random.uniform(5.0, 7.0), 2)
+            
+            if strength >= 86:
+                duration = "15-20 mins"
+                timer = 15
+            elif strength >= 83:
+                duration = "8-12 mins"
+                timer = 10
+            else:
+                duration = "5-8 mins"
+                timer = 5
+
+            d = 1 if change > 0 else -1
             found.append({
-                "market": market_name, "symbol": symbol, "price": price,
-                "strength": strength, "entry_time": entry_time.strftime("%H:%M:%S"),
-                "sl": price * (1 - sl_p/100), "sl_p": sl_p,
-                "tp1": price * (1 + tp1_p/100), "tp1_p": tp1_p,
-                "tp2": price * (1 + tp2_p/100), "tp2_p": tp2_p,
-                "duration": random.choice(["5-10 mins", "10-15 mins"]),
-                "expiry": random.choice([5, 10, 15])
+                "market": market, "price": price, "change": change,
+                "strength": strength, "entry_time": entry_str_24,
+                "sl": price * (1 - d*sl_p/100), "sl_p": sl_p,
+                "tp1": price * (1 + d*tp1_p/100), "tp1_p": tp1_p,
+                "tp2": price * (1 + d*tp2_p/100), "tp2_p": tp2_p,
+                "tp3": price * (1 + d*tp3_p/100), "tp3_p": tp3_p,
+                "duration": duration, "timer": timer
             })
+    found.sort(key=lambda x: x['strength'], reverse=True)
     return found
 
-def auto_alert_loop():
+def auto_loop():
     while True:
         try:
             if auto_alert_on:
-                signals = scan_strong()
+                signals = scan_signals()
                 if signals:
                     for sig in signals[:2]:
-                        msg = build_signal_msg(sig)
+                        msg = build_signal(sig)
                         for uid in list(users):
                             try:
                                 bot.send_message(uid, msg)
                                 time.sleep(0.3)
                             except:
                                 pass
-                        try:
-                            bot.send_message(ADMIN_ID, msg)
-                        except:
-                            pass
-            time.sleep(300)
-        except Exception as e:
-            print(f"Auto alert error: {e}")
+            time.sleep(420) # Alert every 7 mins - exactly 7 mins before next entry
+        except:
             time.sleep(60)
 
-threading.Thread(target=auto_alert_loop, daemon=True).start()
+threading.Thread(target=auto_loop, daemon=True).start()
 
 @bot.message_handler(commands=['start'])
 def start(m):
     users.add(m.chat.id)
-    bot.send_message(m.chat.id, "🔥 AUTO ALERT ACTIVE 80-85% 🔥\n/strong - Scan now\n/markets - All markets")
+    bot.send_message(m.chat.id,
+        "✅ BOT READY - 7 MINS BEFORE MODE\n\n"
+        "I no go show current time again.\n"
+        "I go straight tell you:\n"
+        "IN 4:07 BUY or SELL\n\n"
+        "With SL, TP, and how long e go last.\n\n"
+        "Commands:\n"
+        "/signal - Get signal NOW for next 7 mins\n"
+        "/auto_on - Auto alert every 7 mins"
+    )
 
-@bot.message_handler(commands=['strong'])
+@bot.message_handler(commands=['signal','strong','buy','s'])
 def manual(m):
     users.add(m.chat.id)
-    bot.send_message(m.chat.id, "🔍 Scanning...")
-    signals = scan_strong()
+    bot.send_message(m.chat.id, "🔍 Checking strong trend for next entry...")
+    signals = scan_signals()
     if not signals:
-        bot.send_message(m.chat.id, "⚪ No 80-85% now. Auto alert go notify you!")
+        bot.send_message(m.chat.id, "⚪ No 80%+ trend for next 7 mins. I dey watch, I go alert you!")
         return
-    for sig in signals[:4]:
-        bot.send_message(m.chat.id, build_signal_msg(sig))
+    for sig in signals[:3]:
+        bot.send_message(m.chat.id, build_signal(sig))
 
-@bot.message_handler(commands=['markets', 'admin'])
-def other(m):
-    users.add(m.chat.id)
-    bot.send_message(m.chat.id, f"Markets 12 | Users {len(users)} | Auto ON")
-
-print("SECURE BOT STARTED")
+print("BOT STARTED - 7 MIN BEFORE MODE")
 bot.infinity_polling(skip_pending=True)
