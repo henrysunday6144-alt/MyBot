@@ -149,3 +149,36 @@ def manual(m):
 
 print("BOT STARTED - 7 MIN BEFORE MODE")
 bot.infinity_polling(skip_pending=True)
+from flask import Flask
+import os
+
+app = Flask(__name__)
+@app.route('/')
+def home():
+    return "WAT BOT ALIVE - IN 16:05 WAT BUY"
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+threading.Thread(target=run_web, daemon=True).start()
+import telebot
+import requests
+import random
+import threading
+import time
+import os
+from datetime import datetime, timedelta, timezone
+from flask import Flask # ADD THIS
+
+app = Flask(__name__) # ADD THIS
+@app.route('/')
+def home():
+    return "WAT BOT ALIVE"
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+threading.Thread(target=run_web, daemon=True).start()
+
+TOKEN = os.getenv("BOT_TOKEN")
+... rest of your WAT code ...
