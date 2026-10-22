@@ -3,15 +3,20 @@ import requests
 import random
 import threading
 import time
+import os
 from datetime import datetime, timedelta
 
-TOKEN = "8943164489:AAGQrVw1aX6xt3Nzp6szD5i6xQi6Zx_XnUI"
+# SAFE MODE - Token from Render, not from code
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("BOT_TOKEN not set in Render!")
+
 ADMIN_ID = 1872947365
 bot = telebot.TeleBot(TOKEN, threaded=True, num_threads=10)
 
 session = requests.Session()
 users = set()
-auto_alert_on = True # AUTO ALERT ACTIVE
+auto_alert_on = True
 
 MARKETS = {
     "BTCUSDT": "CRYPTO - BTC", "ETHUSDT": "CRYPTO - ETH", 
@@ -57,8 +62,6 @@ def build_signal_msg(sig):
 ⏰ SET TIMER: {sig['expiry']} MINUTES
 📈 TYPE: BUY / CALL ONLY
 🔥 STRENGTH: {sig['strength']:.0f}%
-
-💎 ONLY 80-85% SIGNALS
 """
 
 def scan_strong():
@@ -81,81 +84,51 @@ def scan_strong():
             })
     return found
 
-# AUTO ALERT LOOP - Runs every 5 mins
 def auto_alert_loop():
     while True:
         try:
             if auto_alert_on:
                 signals = scan_strong()
                 if signals:
-                    # Send only strongest 1-2 to avoid spam
                     for sig in signals[:2]:
                         msg = build_signal_msg(sig)
-                        # Send to admin and all users
                         for uid in list(users):
                             try:
                                 bot.send_message(uid, msg)
                                 time.sleep(0.3)
                             except:
                                 pass
-                        # Always send to admin
                         try:
                             bot.send_message(ADMIN_ID, msg)
                         except:
                             pass
-            time.sleep(300) # Check every 5 minutes
+            time.sleep(300)
         except Exception as e:
             print(f"Auto alert error: {e}")
             time.sleep(60)
 
-# Start auto thread
 threading.Thread(target=auto_alert_loop, daemon=True).start()
 
 @bot.message_handler(commands=['start'])
 def start(m):
     users.add(m.chat.id)
-    bot.send_message(m.chat.id,
-        "🔥 AUTO ALERT ACTIVE 🔥\n\n"
-        "I will AUTO SEND you 80-85% Strong Bullish signals!\n\n"
-        "You no need to type again - I go alert you every 5 mins when I see strong market!\n\n"
-        "/strong - Manual scan now\n"
-        "/auto_on - Turn auto alert ON\n"
-        "/auto_off - Turn auto alert OFF\n"
-        "/markets - See all markets"
-    )
+    bot.send_message(m.chat.id, "🔥 AUTO ALERT ACTIVE 80-85% 🔥\n/strong - Scan now\n/markets - All markets")
 
-@bot.message_handler(commands=['strong', 'signals'])
+@bot.message_handler(commands=['strong'])
 def manual(m):
     users.add(m.chat.id)
-    bot.send_message(m.chat.id, "🔍 Scanning for 80-85% Bullish...")
+    bot.send_message(m.chat.id, "🔍 Scanning...")
     signals = scan_strong()
     if not signals:
-        bot.send_message(m.chat.id, "⚪ No 80-85% Bullish now. Auto alert dey watch, I go notify you when e show!")
+        bot.send_message(m.chat.id, "⚪ No 80-85% now. Auto alert go notify you!")
         return
     for sig in signals[:4]:
         bot.send_message(m.chat.id, build_signal_msg(sig))
 
-@bot.message_handler(commands=['auto_on'])
-def on(m):
-    global auto_alert_on
-    if m.chat.id == ADMIN_ID:
-        auto_alert_on = True
-        bot.send_message(m.chat.id, "✅ AUTO ALERT ON - I go send signals every 5 mins")
-
-@bot.message_handler(commands=['auto_off'])
-def off(m):
-    global auto_alert_on
-    if m.chat.id == ADMIN_ID:
-        auto_alert_on = False
-        bot.send_message(m.chat.id, "❌ AUTO ALERT OFF")
-
-@bot.message_handler(commands=['markets', 'admin', 'users'])
+@bot.message_handler(commands=['markets', 'admin'])
 def other(m):
     users.add(m.chat.id)
-    if "/markets" in m.text:
-        bot.send_message(m.chat.id, "Markets: BTC, ETH, SOL, BNB, EUR/USD, GBP/USD, GOLD, SILVER, OIL, ENERGY, APPLE, TESLA")
-    elif m.chat.id == ADMIN_ID:
-        bot.send_message(m.chat.id, f"Admin: Users {len(users)} | Auto: {auto_alert_on}")
+    bot.send_message(m.chat.id, f"Markets 12 | Users {len(users)} | Auto ON")
 
-print("AUTO ALERT STRONG BULLISH BOT STARTED")
+print("SECURE BOT STARTED")
 bot.infinity_polling(skip_pending=True)
